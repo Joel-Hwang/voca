@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>영어 문장 맞추기 게임 (드래그 기능 추가)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            /* 텍스트 선택 방지 (드래그 시 텍스트 선택 방해 방지) */
+            user-select: none; 
+        }
+
+        .container {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 600px;
+            text-align: center;
+        }
+
+        h2 { color: #333; margin-bottom: 20px; }
+
+        /* 정답 영역 */
+        .answer-area {
+            min-height: 60px;
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+            background-color: #fafafa;
+            transition: all 0.3s;
+        }
+
+        .answer-area.correct { border-color: #4CAF50; background-color: #e8f5e9; }
+        .answer-area.wrong { border-color: #f44336; background-color: #ffebee; }
+
+        /* 단어 풀 영역 */
+        .word-pool {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 30px;
+            min-height: 40px; /* 비어있어도 공간 유지 */
+        }
+
+        /* 공통 버튼 스타일 */
+        .word-btn {
+            background-color: #e0e7ff;
+            color: #333;
+            border: 2px solid transparent;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer; /* 기본 포인터 */
+            font-size: 16px;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* 정답란에 있는 버튼 스타일 (드래그 가능 표시) */
+        .answer-btn {
+            cursor: grab; /* 손바닥 모양 */
+            background-color: #c7d2fe;
+        }
+
+        .answer-btn:active {
+            cursor: grabbing; /* 움켜쥔 손바닥 모양 */
+        }
+
+        /* 드래그 중인 요소 스타일 */
+        .dragging {
+            opacity: 0.5;
+            transform: scale(0.95);
+            border: 2px dashed #666;
+        }
+
+        /* 드래그 타겟 위로 올라왔을 때 스타일 */
+        .drag-over {
+            border: 2px dashed #4CAF50;
+            transform: scale(1.05);
+        }
+
+        .controls { display: flex; gap: 10px; justify-content: center; }
+        .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 16px; }
+        .submit-btn { background-color: #4CAF50; color: white; }
+        .reset-btn { background-color: #FF9800; color: white; }
+        .submit-btn:hover { background-color: #45a049; }
+        .reset-btn:hover { background-color: #e68900; }
+        #result-msg { margin-top: 15px; font-weight: bold; height: 20px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>문장 완성하기 (순서 변경 가능)</h2>
+        <p>단어를 클릭하거나 <b>드래그</b>하여 순서를 바꾸세요.</p>
+
+        <div id="answer-area" class="answer-area"></div>
+        <div id="word-pool" class="word-pool"></div>
+
+        <div class="controls">
+            <button class="btn submit-btn" onclick="checkAnswer()">제출하기</button>
+            <button class="btn reset-btn" onclick="initGame()">다시하기</button>
+        </div>
+        <div id="result-msg"></div>
+    </div>
+
+    <script>
+        let originalSentence = "My mom said life is like a piece of chocolate";
+        
+        let currentPool = [];
+        let userAnswer = [];
+        let dragSrcIndex = null; // 드래그 시작된 아이템의 인덱스 저장
+
+        window.onload = () => {
+            initGame();
+        };
+        
+        function nextSentence(){
+            const sentences = [
+                'My mom said life is like a piece of chocolate.',
+                'Keep it tight',
+                "Don't waste your emotions for the bullshits.",
+                "Stand yourself and be confident.",
+                "Do whatever you want. Life is a gift.",
+                "Pick up the dog shit on your yard."
+            ]
+            return sentences[Math.floor(Math.random()*sentences.length)];
+        }
+
+        function initGame() {
+            const chunkCnt = 5;
+            originalSentence = nextSentence();
+            const words = originalSentence.split(' ');
+            const chunk = Math.max(1, words.length/5);
+
+            let leftWordsLength = words.length;
+
+            let poolLength = [];
+            for(let i = chunkCnt; i > 0; i--){
+                let currentPoolLength = Math.ceil(leftWordsLength / i);
+                leftWordsLength -= currentPoolLength;
+                poolLength.push(currentPoolLength);
+            }
+            for(let i = 0, start = 0; i < poolLength.length;i++){
+                if(poolLength[i] === 0 ) break;
+                const currentWords = words.slice(start, start+poolLength[i]).join(' ');
+                start = start+poolLength[i];
+                currentPool.push({ id: i, text: currentWords });
+            }
+            userAnswer = [];
+            
+            // 셔플
+            for (let i = currentPool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [currentPool[i], currentPool[j]] = [currentPool[j], currentPool[i]];
+            }
+
+            document.getElementById('result-msg').textContent = '';
+            resetStyles();
+            render();
+        }
+
+        function render() {
+            const answerArea = document.getElementById('answer-area');
+            const wordPool = document.getElementById('word-pool');
+
+            answerArea.innerHTML = '';
+            wordPool.innerHTML = '';
+
+            // --- 정답 영역 렌더링 (드래그 기능 포함) ---
+            userAnswer.forEach((item, index) => {
+                const btn = document.createElement('button');
+                btn.className = 'word-btn answer-btn';
+                btn.textContent = item.text;
+                
+                // 1. 드래그 속성 켜기
+                btn.draggable = true;
+
+                // 2. 클릭 시 기존처럼 제거 (드래그가 아닐 때만 작동하도록 약간의 트릭이 필요하지만, 기본적으로 클릭이벤트도 동작함)
+                btn.onclick = () => removeWordFromAnswer(index);
+
+                // 3. 드래그 시작 (Drag Start)
+                btn.addEventListener('dragstart', (e) => {
+                    dragSrcIndex = index;
+                    e.target.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+
+                // 4. 드래그 종료 (Drag End) - 스타일 초기화
+                btn.addEventListener('dragend', (e) => {
+                    e.target.classList.remove('dragging');
+                    // 모든 버튼의 drag-over 스타일 제거
+                    document.querySelectorAll('.answer-btn').forEach(b => b.classList.remove('drag-over'));
+                });
+
+                // 5. 드래그 오버 (Drag Over) - 드롭 허용을 위해 필수
+                btn.addEventListener('dragover', (e) => {
+                    e.preventDefault(); // 이것이 있어야 drop 이벤트가 발생함
+                    return false;
+                });
+
+                // 6. 드래그 진입 (Drag Enter) - 시각적 피드백
+                btn.addEventListener('dragenter', (e) => {
+                    if (dragSrcIndex !== index) {
+                        e.target.classList.add('drag-over');
+                    }
+                });
+
+                // 7. 드래그 나감 (Drag Leave)
+                btn.addEventListener('dragleave', (e) => {
+                    e.target.classList.remove('drag-over');
+                });
+
+                // 8. 드롭 (Drop) - 순서 변경 로직
+                btn.addEventListener('drop', (e) => {
+                    e.stopPropagation(); // 부모로 버블링 방지
+                    
+                    if (dragSrcIndex !== null && dragSrcIndex !== index) {
+                        // 배열 순서 변경 (Splice 활용)
+                        const movedItem = userAnswer.splice(dragSrcIndex, 1)[0];
+                        userAnswer.splice(index, 0, movedItem);
+                        
+                        render(); // 화면 다시 그리기
+                    }
+                    return false;
+                });
+
+                answerArea.appendChild(btn);
+            });
+
+            // --- 단어 풀 영역 렌더링 (단순 클릭) ---
+            currentPool.forEach((item, index) => {
+                const btn = document.createElement('button');
+                btn.className = 'word-btn';
+                btn.textContent = item.text;
+                btn.onclick = () => addWordToAnswer(index);
+                wordPool.appendChild(btn);
+            });
+        }
+
+        function addWordToAnswer(poolIndex) {
+            const selectedItem = currentPool.splice(poolIndex, 1)[0];
+            userAnswer.push(selectedItem);
+            render();
+            resetStyles();
+        }
+
+        function removeWordFromAnswer(answerIndex) {
+            const removedItem = userAnswer.splice(answerIndex, 1)[0];
+            currentPool.push(removedItem);
+            render();
+            resetStyles();
+        }
+
+        function checkAnswer() {
+            const userSentence = userAnswer.map(item => item.text).join(' ');
+            const resultMsg = document.getElementById('result-msg');
+            const answerArea = document.getElementById('answer-area');
+
+            if (userSentence === originalSentence) {
+                resultMsg.textContent = "정답입니다! 🎉";
+                resultMsg.style.color = "green";
+                answerArea.classList.add('correct');
+                answerArea.classList.remove('wrong');
+            } else {
+                resultMsg.textContent = "틀렸습니다. 다시 확인해보세요. 🤔";
+                resultMsg.style.color = "red";
+                answerArea.classList.add('wrong');
+                answerArea.classList.remove('correct');
+            }
+
+            console.log('서버에 결과 제출: ' + userSentence === originalSentence);
+            if (userSentence === originalSentence) initGame();
+        }
+
+        function resetStyles() {
+            const answerArea = document.getElementById('answer-area');
+            answerArea.classList.remove('correct', 'wrong');
+            document.getElementById('result-msg').textContent = '';
+        }
+
+    </script>
+</body>
+</html>
